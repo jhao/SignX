@@ -59,7 +59,10 @@ class UserAccount(db.Model, UserMixin, TimestampMixin):
     is_active: Mapped[bool] = mapped_column(default=True)
     last_login_at: Mapped[datetime | None] = mapped_column(default=None)
 
-    company: Mapped['Company | None'] = relationship(back_populates='accounts')
+    company: Mapped['Company | None'] = relationship(
+        back_populates='accounts',
+        foreign_keys=[company_id],
+    )
 
 
 @login_manager.user_loader
@@ -81,7 +84,10 @@ class Company(db.Model, TimestampMixin):
     goals: Mapped[str | None] = mapped_column(db.Text)
     created_by: Mapped[int | None] = mapped_column(ForeignKey('user_account.id'))
 
-    accounts: Mapped[list['UserAccount']] = relationship(back_populates='company')
+    accounts: Mapped[list['UserAccount']] = relationship(
+        back_populates='company',
+        foreign_keys='UserAccount.company_id',
+    )
     employees: Mapped[list['Employee']] = relationship(back_populates='company', cascade='all, delete-orphan')
     projects: Mapped[list['Project']] = relationship(back_populates='company', cascade='all, delete-orphan')
 
