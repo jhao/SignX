@@ -1,25 +1,41 @@
 from __future__ import annotations
 
-from flask import jsonify, request
+from flask import request
 from flask_login import login_required
 
-from ..extensions import db
-from ..models import AuditEvent, Envelope, EnvelopeStatus, Notification, User
-from ..rbac import Role, require_roles
+from ..api_utils import api_error, api_ok, require_platform_roles
+from ..models import AuditLog, Company, PlatformRole, UserAccount
 from . import bp
+
+
+@bp.get('/tenants')
+@login_required
+@require_platform_roles(PlatformRole.PLATFORM_ADMIN)
+def list_tenants():
+    tenants = Company.query.order_by(Company.created_at.desc()).all()
+    return api_ok([
+        {
+            'id': tenant.id,
+            'name': tenant.name,
+            'business_model': tenant.business_model,
+            'created_at': tenant.created_at.isoformat(),
+        }
+        for tenant in tenants
+    ])
 
 
 @bp.get('/users')
 @login_required
-@require_roles(Role.ADMIN)
+@require_platform_roles(PlatformRole.PLATFORM_ADMIN)
 def list_users():
-    users = User.query.all()
-    return jsonify([
+    users = UserAccount.query.order_by(UserAccount.id.desc()).all()
+    return api_ok([
         {
             'id': user.id,
             'email': user.email,
-            'name': user.name,
-            'roles': user.roles,
+            'full_name': user.full_name,
+            'platform_role': user.platform_role.value,
+            'company_id': user.company_id,
         }
         for user in users
     ])
@@ -27,46 +43,23 @@ def list_users():
 
 @bp.get('/audits')
 @login_required
-@require_roles(Role.ADMIN)
-def audit_events():
-    envelope_id = request.args.get('envelope_id', type=int)
-    query = AuditEvent.query
-    if envelope_id:
-        query = query.filter_by(envelope_id=envelope_id)
-    events = query.order_by(AuditEvent.occurred_at.desc()).limit(100).all()
-    return jsonify([
+@require_platform_roles(PlatformRole.PLATFORM_ADMIN)
+def list_audits():
+    company_id = request.args.get('company_id', type=int)
+    query = AuditLog.query
+    if company_id:
+        query = query.filter_by(company_id=company_id)
+    logs = query.order_by(AuditLog.created_at.desc()).limit(200).all()
+    return api_ok([
         {
-            'id': event.id,
-            'envelope_id': event.envelope_id,
-            'event_type': event.event_type,
-            'payload': event.payload,
-            'occurred_at': event.occurred_at.isoformat(),
+            'id': log.id,
+            'company_id': log.company_id,
+            'actor_user_id': log.actor_user_id,
+            'action': log.action,
+            'resource_type': log.resource_type,
+            'resource_id': log.resource_id,
+            'details': log.details,
+            'created_at': log.created_at.isoformat(),
         }
-        for event in events
+        for log in logs
     ])
-
-
-@bp.get('/notifications')
-@login_required
-@require_roles(Role.ADMIN)
-def list_notifications():
-    notifications = Notification.query.order_by(Notification.sent_at.desc().nullslast()).limit(100).all()
-    return jsonify([
-        {
-            'id': notification.id,
-            'subject': notification.subject,
-            'sent_at': notification.sent_at.isoformat() if notification.sent_at else None,
-            'success': notification.success,
-        }
-        for notification in notifications
-    ])
-
-
-@bp.post('/envelopes/<int:envelope_id>/void')
-@login_required
-@require_roles(Role.ADMIN)
-def void_envelope(envelope_id: int):
-    envelope = Envelope.query.get_or_404(envelope_id)
-    envelope.set_status(EnvelopeStatus.VOIDED)
-    db.session.commit()
-    return jsonify({'status': envelope.status.value})
