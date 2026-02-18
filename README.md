@@ -49,10 +49,10 @@ python wsgi.py
 
 启动后访问：
 
-- 控制台首页：`http://127.0.0.1:6000/`
-- 健康检查：`http://127.0.0.1:6000/healthz`
+- 控制台首页：`http://127.0.0.1:5500/`
+- 健康检查：`http://127.0.0.1:5500/healthz`
 
-> `wsgi.py` 默认监听 `0.0.0.0:6000`。
+> `wsgi.py` 默认监听 `0.0.0.0:5500`。
 
 ### 方式二：Docker Build + Run
 
@@ -65,7 +65,7 @@ docker build -t signx:latest .
 #### 2）运行容器
 
 ```bash
-docker run --rm -p 5000:5000 \
+docker run --rm -p 5500:5500 \
   -e DATABASE_URL=sqlite:////app/signx.db \
   -e SECRET_KEY=change-me \
   signx:latest
@@ -73,10 +73,10 @@ docker run --rm -p 5000:5000 \
 
 启动后访问：
 
-- 控制台首页：`http://127.0.0.1:5000/`
-- 健康检查：`http://127.0.0.1:5000/healthz`
+- 控制台首页：`http://127.0.0.1:5500/`
+- 健康检查：`http://127.0.0.1:5500/healthz`
 
-> Docker 镜像默认使用 Gunicorn 启动：`gunicorn wsgi:app --bind 0.0.0.0:5000 --workers 4`。
+> Docker 镜像默认使用 Gunicorn 启动：`gunicorn wsgi:app --bind 0.0.0.0:5500 --workers 4`。
 
 ### 方式三：Docker Compose 启动
 
@@ -84,7 +84,7 @@ docker run --rm -p 5000:5000 \
 docker compose up --build
 ```
 
-访问地址：`http://127.0.0.1:5000/`
+访问地址：`http://127.0.0.1:5500/`
 
 ## 配置说明
 
