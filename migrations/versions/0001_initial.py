@@ -19,6 +19,7 @@ financial_record_type_enum = sa.Enum('income', 'expense', name='financialrecordt
 
 def upgrade() -> None:
     bind = op.get_bind()
+    is_sqlite = bind.dialect.name == 'sqlite'
     platform_role_enum.create(bind, checkfirst=True)
     company_role_enum.create(bind, checkfirst=True)
     task_status_enum.create(bind, checkfirst=True)
@@ -60,7 +61,11 @@ def upgrade() -> None:
         sa.UniqueConstraint('email')
     )
 
-    op.create_foreign_key('fk_company_created_by', 'company', 'user_account', ['created_by'], ['id'])
+    if is_sqlite:
+        with op.batch_alter_table('company') as batch_op:
+            batch_op.create_foreign_key('fk_company_created_by', 'user_account', ['created_by'], ['id'])
+    else:
+        op.create_foreign_key('fk_company_created_by', 'company', 'user_account', ['created_by'], ['id'])
 
     op.create_table(
         'role',
@@ -216,6 +221,9 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    bind = op.get_bind()
+    is_sqlite = bind.dialect.name == 'sqlite'
+
     op.drop_table('audit_log')
     op.drop_table('project_employee')
     op.drop_table('tool')
@@ -225,11 +233,14 @@ def downgrade() -> None:
     op.drop_table('project')
     op.drop_table('employee')
     op.drop_table('role')
-    op.drop_constraint('fk_company_created_by', 'company', type_='foreignkey')
+    if is_sqlite:
+        with op.batch_alter_table('company') as batch_op:
+            batch_op.drop_constraint('fk_company_created_by', type_='foreignkey')
+    else:
+        op.drop_constraint('fk_company_created_by', 'company', type_='foreignkey')
     op.drop_table('user_account')
     op.drop_table('company')
 
-    bind = op.get_bind()
     financial_record_type_enum.drop(bind, checkfirst=True)
     priority_enum.drop(bind, checkfirst=True)
     task_status_enum.drop(bind, checkfirst=True)
