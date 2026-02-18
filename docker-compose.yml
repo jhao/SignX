@@ -9,11 +9,3 @@ services:
     environment:
       - DATABASE_URL=sqlite:////app/signx.db
       - SECRET_KEY=change-me
-      - MAIL_SERVER=mailhog
-      - MAIL_PORT=1025
-    depends_on:
-      - mailhog
-  mailhog:
-    image: mailhog/mailhog:v1.0.1
-    ports:
-      - "8025:8025"

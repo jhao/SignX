@@ -1,199 +1,206 @@
 from __future__ import annotations
 
 import enum
-from datetime import datetime, timedelta
-from typing import List
+from datetime import datetime
 
 from flask_login import UserMixin
-from sqlalchemy import Boolean, Column, DateTime, Enum, ForeignKey, Integer, LargeBinary, String, Text
+from sqlalchemy import Enum, ForeignKey, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .extensions import db, login_manager
 
 
-class EnvelopeStatus(enum.StrEnum):
-    DRAFT = 'draft'
-    SENT = 'sent'
-    VIEWED = 'viewed'
-    SIGNED = 'signed'
-    COMPLETED = 'completed'
-    VOIDED = 'voided'
-
-    @classmethod
-    def transition(cls, current: 'EnvelopeStatus', target: 'EnvelopeStatus') -> bool:
-        allowed = {
-            cls.DRAFT: {cls.SENT, cls.VOIDED},
-            cls.SENT: {cls.VIEWED, cls.SIGNED, cls.VOIDED},
-            cls.VIEWED: {cls.SIGNED, cls.VOIDED},
-            cls.SIGNED: {cls.COMPLETED, cls.VOIDED},
-            cls.COMPLETED: set(),
-            cls.VOIDED: set(),
-        }
-        return target in allowed.get(current, set())
+class TimestampMixin:
+    created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
-roles_users = db.Table(
-    'roles_users',
-    Column('user_id', ForeignKey('user.id'), primary_key=True),
-    Column('role', String(32), primary_key=True),
-)
+class PlatformRole(enum.StrEnum):
+    PLATFORM_ADMIN = 'platform_admin'
+    USER = 'user'
 
 
-class User(db.Model, UserMixin):
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    email: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
-    password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
-    name: Mapped[str] = mapped_column(String(128), nullable=False)
-    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
-    last_login_at: Mapped[datetime | None] = mapped_column(DateTime)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+class CompanyRole(enum.StrEnum):
+    OWNER = 'owner'
+    FINANCE_MANAGER = 'finance_manager'
+    HR_MANAGER = 'hr_manager'
+    PROJECT_LEAD = 'project_lead'
+    MEMBER = 'member'
 
-    envelopes: Mapped[List['Envelope']] = relationship(back_populates='creator')
-    notifications: Mapped[List['Notification']] = relationship(back_populates='user')
 
-    def __repr__(self) -> str:  # pragma: no cover - repr only
-        return f'<User {self.email}>'
+class TaskStatus(enum.StrEnum):
+    TODO = 'todo'
+    IN_PROGRESS = 'in_progress'
+    BLOCKED = 'blocked'
+    DONE = 'done'
 
-    @property
-    def roles(self) -> List[str]:
-        result = db.session.execute(
-            roles_users.select().where(roles_users.c.user_id == self.id)
-        )
-        return [row.role for row in result]
+
+class Priority(enum.StrEnum):
+    LOW = 'low'
+    MEDIUM = 'medium'
+    HIGH = 'high'
+    URGENT = 'urgent'
+
+
+class FinancialRecordType(enum.StrEnum):
+    INCOME = 'income'
+    EXPENSE = 'expense'
+
+
+class UserAccount(db.Model, UserMixin, TimestampMixin):
+    __tablename__ = 'user_account'
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    email: Mapped[str] = mapped_column(db.String(255), unique=True, nullable=False)
+    password_hash: Mapped[str] = mapped_column(db.String(255), nullable=False)
+    full_name: Mapped[str] = mapped_column(db.String(128), nullable=False)
+    platform_role: Mapped[PlatformRole] = mapped_column(Enum(PlatformRole), default=PlatformRole.USER)
+    company_id: Mapped[int | None] = mapped_column(ForeignKey('company.id'))
+    is_active: Mapped[bool] = mapped_column(default=True)
+    last_login_at: Mapped[datetime | None] = mapped_column(default=None)
+
+    company: Mapped['Company | None'] = relationship(back_populates='accounts')
 
 
 @login_manager.user_loader
 def load_user(user_id: str):
-    return User.query.get(int(user_id))
+    return db.session.get(UserAccount, int(user_id))
 
 
-class Envelope(db.Model):
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    subject: Mapped[str] = mapped_column(String(255), nullable=False)
-    message: Mapped[str] = mapped_column(Text)
-    status: Mapped[EnvelopeStatus] = mapped_column(Enum(EnvelopeStatus), default=EnvelopeStatus.DRAFT)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-    expires_at: Mapped[datetime | None] = mapped_column(DateTime)
-    creator_id: Mapped[int] = mapped_column(ForeignKey('user.id'), nullable=False)
+class Company(db.Model, TimestampMixin):
+    __tablename__ = 'company'
 
-    creator: Mapped[User] = relationship(back_populates='envelopes')
-    documents: Mapped[List['Document']] = relationship(back_populates='envelope', cascade='all, delete-orphan')
-    signers: Mapped[List['Signer']] = relationship(back_populates='envelope', cascade='all, delete-orphan')
-    audit_events: Mapped[List['AuditEvent']] = relationship(back_populates='envelope', cascade='all, delete-orphan')
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(db.String(128), nullable=False, unique=True)
+    business_model: Mapped[str | None] = mapped_column(db.String(128))
+    description: Mapped[str | None] = mapped_column(db.Text)
+    accounting_method: Mapped[str | None] = mapped_column(db.String(64))
+    capital: Mapped[float | None] = mapped_column(db.Float)
+    tax_info: Mapped[str | None] = mapped_column(db.Text)
+    organization_structure: Mapped[str | None] = mapped_column(db.Text)
+    goals: Mapped[str | None] = mapped_column(db.Text)
+    created_by: Mapped[int | None] = mapped_column(ForeignKey('user_account.id'))
 
-    def set_status(self, target: EnvelopeStatus) -> None:
-        if self.status == target:
-            return
-        previous = self.status
-        if not EnvelopeStatus.transition(previous, target):
-            raise ValueError(f'Invalid transition {self.status} -> {target}')
-        self.status = target
-        db.session.add(
-            AuditEvent(
-                envelope=self,
-                event_type='status_change',
-                payload={'from': previous.value, 'to': target.value},
-            )
-        )
-
-    def ensure_expiration(self, ttl_hours: int = 72) -> None:
-        if not self.expires_at:
-            self.expires_at = datetime.utcnow() + timedelta(hours=ttl_hours)
+    accounts: Mapped[list['UserAccount']] = relationship(back_populates='company')
+    employees: Mapped[list['Employee']] = relationship(back_populates='company', cascade='all, delete-orphan')
+    projects: Mapped[list['Project']] = relationship(back_populates='company', cascade='all, delete-orphan')
 
 
-class Document(db.Model):
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    envelope_id: Mapped[int] = mapped_column(ForeignKey('envelope.id'), nullable=False)
-    filename: Mapped[str] = mapped_column(String(255), nullable=False)
-    original_path: Mapped[str] = mapped_column(String(512), nullable=False)
-    pdf_path: Mapped[str] = mapped_column(String(512))
-    uploaded_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+class Role(db.Model, TimestampMixin):
+    __tablename__ = 'role'
+    __table_args__ = (UniqueConstraint('company_id', 'name', name='uq_role_company_name'),)
 
-    envelope: Mapped[Envelope] = relationship(back_populates='documents')
-    fields: Mapped[List['Field']] = relationship(back_populates='document', cascade='all, delete-orphan')
-    signatures: Mapped[List['Signature']] = relationship(back_populates='document', cascade='all, delete-orphan')
+    id: Mapped[int] = mapped_column(primary_key=True)
+    company_id: Mapped[int] = mapped_column(ForeignKey('company.id'), nullable=False)
+    name: Mapped[str] = mapped_column(db.String(64), nullable=False)
+    responsibilities: Mapped[str | None] = mapped_column(db.Text)
+    created_by: Mapped[int | None] = mapped_column(ForeignKey('user_account.id'))
 
 
-class Signer(db.Model):
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    envelope_id: Mapped[int] = mapped_column(ForeignKey('envelope.id'), nullable=False)
-    name: Mapped[str] = mapped_column(String(128), nullable=False)
-    email: Mapped[str] = mapped_column(String(255), nullable=False)
-    access_code: Mapped[str | None] = mapped_column(String(64))
-    invite_token: Mapped[str | None] = mapped_column(String(128), unique=True)
-    has_signed: Mapped[bool] = mapped_column(Boolean, default=False)
-    order: Mapped[int] = mapped_column(Integer, default=1)
+class Employee(db.Model, TimestampMixin):
+    __tablename__ = 'employee'
 
-    envelope: Mapped[Envelope] = relationship(back_populates='signers')
-    signatures: Mapped[List['Signature']] = relationship(back_populates='signer', cascade='all, delete-orphan')
-    notifications: Mapped[List['Notification']] = relationship(back_populates='signer')
+    id: Mapped[int] = mapped_column(primary_key=True)
+    company_id: Mapped[int] = mapped_column(ForeignKey('company.id'), nullable=False)
+    name: Mapped[str] = mapped_column(db.String(128), nullable=False)
+    primary_tasks: Mapped[str | None] = mapped_column(db.Text)
+    role_id: Mapped[int | None] = mapped_column(ForeignKey('role.id'))
+    company_role: Mapped[CompanyRole] = mapped_column(Enum(CompanyRole), default=CompanyRole.MEMBER)
+    ai_provider: Mapped[str | None] = mapped_column(db.String(64))
+    api_key_encrypted: Mapped[str | None] = mapped_column(db.String(512))
+    photo_path: Mapped[str | None] = mapped_column(db.String(255))
+    created_by: Mapped[int | None] = mapped_column(ForeignKey('user_account.id'))
 
-
-class Field(db.Model):
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    document_id: Mapped[int] = mapped_column(ForeignKey('document.id'), nullable=False)
-    signer_id: Mapped[int] = mapped_column(ForeignKey('signer.id'), nullable=False)
-    field_type: Mapped[str] = mapped_column(String(32), nullable=False)
-    page: Mapped[int] = mapped_column(Integer, default=1)
-    x: Mapped[float] = mapped_column(db.Float, nullable=False)
-    y: Mapped[float] = mapped_column(db.Float, nullable=False)
-    width: Mapped[float] = mapped_column(db.Float, nullable=False)
-    height: Mapped[float] = mapped_column(db.Float, nullable=False)
-    required: Mapped[bool] = mapped_column(Boolean, default=True)
-
-    document: Mapped[Document] = relationship(back_populates='fields')
-    signer: Mapped[Signer] = relationship()
+    company: Mapped['Company'] = relationship(back_populates='employees')
 
 
-class Signature(db.Model):
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    document_id: Mapped[int] = mapped_column(ForeignKey('document.id'), nullable=False)
-    signer_id: Mapped[int] = mapped_column(ForeignKey('signer.id'), nullable=False)
-    field_id: Mapped[int | None] = mapped_column(ForeignKey('field.id'))
-    image_data: Mapped[bytes | None] = mapped_column(LargeBinary)
-    stamp_path: Mapped[str | None] = mapped_column(String(512))
-    applied_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+class Project(db.Model, TimestampMixin):
+    __tablename__ = 'project'
 
-    document: Mapped[Document] = relationship(back_populates='signatures')
-    signer: Mapped[Signer] = relationship(back_populates='signatures')
-    field: Mapped[Field | None] = relationship()
-    crypto_record: Mapped['CryptoRecord'] = relationship(back_populates='signature', uselist=False)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    company_id: Mapped[int] = mapped_column(ForeignKey('company.id'), nullable=False)
+    name: Mapped[str] = mapped_column(db.String(128), nullable=False)
+    description: Mapped[str | None] = mapped_column(db.Text)
+    lead_id: Mapped[int | None] = mapped_column(ForeignKey('employee.id'))
+    start_date: Mapped[datetime | None] = mapped_column(db.DateTime)
+    end_date: Mapped[datetime | None] = mapped_column(db.DateTime)
+    objective: Mapped[str | None] = mapped_column(db.Text)
+    created_by: Mapped[int | None] = mapped_column(ForeignKey('user_account.id'))
 
-
-class CryptoRecord(db.Model):
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    signature_id: Mapped[int] = mapped_column(ForeignKey('signature.id'), nullable=False)
-    algorithm: Mapped[str] = mapped_column(String(64), nullable=False)
-    certificate_subject: Mapped[str] = mapped_column(String(255))
-    timestamp: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-    signature_bytes: Mapped[bytes] = mapped_column(LargeBinary)
-
-    signature: Mapped[Signature] = relationship(back_populates='crypto_record')
+    company: Mapped['Company'] = relationship(back_populates='projects')
+    tasks: Mapped[list['Task']] = relationship(back_populates='project', cascade='all, delete-orphan')
 
 
-class AuditEvent(db.Model):
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    envelope_id: Mapped[int] = mapped_column(ForeignKey('envelope.id'), nullable=False)
-    signer_id: Mapped[int | None] = mapped_column(ForeignKey('signer.id'))
-    event_type: Mapped[str] = mapped_column(String(64), nullable=False)
-    payload: Mapped[dict] = mapped_column(db.JSON, default=dict)
-    occurred_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+class Task(db.Model, TimestampMixin):
+    __tablename__ = 'task'
 
-    envelope: Mapped[Envelope] = relationship(back_populates='audit_events')
-    signer: Mapped[Signer | None] = relationship()
+    id: Mapped[int] = mapped_column(primary_key=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey('project.id'), nullable=False)
+    assignee_id: Mapped[int | None] = mapped_column(ForeignKey('employee.id'))
+    description: Mapped[str] = mapped_column(db.Text, nullable=False)
+    status: Mapped[TaskStatus] = mapped_column(Enum(TaskStatus), default=TaskStatus.TODO)
+    due_date: Mapped[datetime | None] = mapped_column(db.DateTime)
+    priority: Mapped[Priority] = mapped_column(Enum(Priority), default=Priority.MEDIUM)
+    dependency_task_id: Mapped[int | None] = mapped_column(ForeignKey('task.id'))
+    created_by: Mapped[int | None] = mapped_column(ForeignKey('user_account.id'))
+
+    project: Mapped['Project'] = relationship(back_populates='tasks')
 
 
-class Notification(db.Model):
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    user_id: Mapped[int | None] = mapped_column(ForeignKey('user.id'))
-    signer_id: Mapped[int | None] = mapped_column(ForeignKey('signer.id'))
-    envelope_id: Mapped[int | None] = mapped_column(ForeignKey('envelope.id'))
-    subject: Mapped[str] = mapped_column(String(255), nullable=False)
-    body: Mapped[str] = mapped_column(Text, nullable=False)
-    sent_at: Mapped[datetime | None] = mapped_column(DateTime)
-    success: Mapped[bool | None] = mapped_column(Boolean)
+class TokenUsage(db.Model, TimestampMixin):
+    __tablename__ = 'token_usage'
 
-    user: Mapped[User | None] = relationship(back_populates='notifications')
-    signer: Mapped[Signer | None] = relationship(back_populates='notifications')
-    envelope: Mapped[Envelope | None] = relationship()
+    id: Mapped[int] = mapped_column(primary_key=True)
+    company_id: Mapped[int] = mapped_column(ForeignKey('company.id'), nullable=False)
+    model: Mapped[str] = mapped_column(db.String(64), nullable=False)
+    tokens_used: Mapped[int] = mapped_column(nullable=False)
+    cost: Mapped[float] = mapped_column(db.Float, nullable=False)
+    usage_date: Mapped[datetime] = mapped_column(db.DateTime, default=datetime.utcnow)
+    created_by: Mapped[int | None] = mapped_column(ForeignKey('user_account.id'))
+
+
+class FinancialRecord(db.Model, TimestampMixin):
+    __tablename__ = 'financial_record'
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    company_id: Mapped[int] = mapped_column(ForeignKey('company.id'), nullable=False)
+    record_date: Mapped[datetime] = mapped_column(db.DateTime, default=datetime.utcnow)
+    description: Mapped[str] = mapped_column(db.Text, nullable=False)
+    amount: Mapped[float] = mapped_column(db.Float, nullable=False)
+    record_type: Mapped[FinancialRecordType] = mapped_column(Enum(FinancialRecordType), nullable=False)
+    created_by: Mapped[int | None] = mapped_column(ForeignKey('user_account.id'))
+
+
+class Tool(db.Model, TimestampMixin):
+    __tablename__ = 'tool'
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    company_id: Mapped[int] = mapped_column(ForeignKey('company.id'), nullable=False)
+    name: Mapped[str] = mapped_column(db.String(128), nullable=False)
+    description: Mapped[str | None] = mapped_column(db.Text)
+    config: Mapped[dict] = mapped_column(db.JSON, default=dict)
+    supported_by_mcp: Mapped[bool] = mapped_column(default=False)
+    created_by: Mapped[int | None] = mapped_column(ForeignKey('user_account.id'))
+
+
+class ProjectEmployee(db.Model, TimestampMixin):
+    __tablename__ = 'project_employee'
+
+    project_id: Mapped[int] = mapped_column(ForeignKey('project.id'), primary_key=True)
+    employee_id: Mapped[int] = mapped_column(ForeignKey('employee.id'), primary_key=True)
+    role_in_project: Mapped[str | None] = mapped_column(db.String(64))
+    created_by: Mapped[int | None] = mapped_column(ForeignKey('user_account.id'))
+
+
+class AuditLog(db.Model):
+    __tablename__ = 'audit_log'
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    company_id: Mapped[int | None] = mapped_column(ForeignKey('company.id'))
+    actor_user_id: Mapped[int | None] = mapped_column(ForeignKey('user_account.id'))
+    action: Mapped[str] = mapped_column(db.String(128), nullable=False)
+    resource_type: Mapped[str] = mapped_column(db.String(64), nullable=False)
+    resource_id: Mapped[str | None] = mapped_column(db.String(64))
+    details: Mapped[dict] = mapped_column(db.JSON, default=dict)
+    ip_address: Mapped[str | None] = mapped_column(db.String(64))
+    created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
