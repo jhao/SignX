@@ -1,5 +1,9 @@
 # SignX
 
+## 方案文档
+
+- SaaS 企业运营管理平台设计方案：`docs/saas_enterprise_platform_design.md`
+
 SignX 是一套面向政企合同与批示流转场景的数字签批平台，围绕文档模板、审批链路、证据留痕和合规签名提供完整的业务闭环。系统以 Python 生态为核心，结合 LibreOffice 与 pyHanko 实现高保真渲染与高级电子签章，帮助业务部门快速完成协议拟制、流转、签署到归档的全流程管理。
 
 ## 核心能力
@@ -187,4 +191,3 @@ OIDC_ISSUER=https://id.example.com
 - 通过 Vault、AWS Secrets Manager 等安全管理敏感配置；禁用在代码仓库存储 `.env`。
 - 配置 Prometheus/Grafana 收集应用与数据库指标，结合 Loki/ELK 进行日志集中化。
 - 对外提供回调接口时，建议启用签名校验与 IP 白名单，避免非法调用。
-
