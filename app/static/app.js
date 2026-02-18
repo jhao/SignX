@@ -189,13 +189,27 @@ async function renderCompanies() {
         <div class="item">
           <h4>基础信息</h4>
           <label>公司名称</label><input name="name" required />
-          <label>业务模式</label><input name="business_model" />
+          <label>业务模式</label>
+          <select name="business_model">
+            <option value="">请选择</option>
+            <option value="SaaS">SaaS</option>
+            <option value="咨询服务">咨询服务</option>
+            <option value="电商">电商</option>
+            <option value="制造">制造</option>
+            <option value="其他">其他</option>
+          </select>
           <label>企业目标</label><textarea name="goals"></textarea>
           <label>主营业务描述</label><textarea name="description"></textarea>
         </div>
         <div class="item">
           <h4>财务制度</h4>
-          <label>记账方式</label><input name="accounting_method" />
+          <label>记账方式</label>
+          <select name="accounting_method">
+            <option value="">请选择</option>
+            <option value="权责发生制">权责发生制</option>
+            <option value="收付实现制">收付实现制</option>
+            <option value="混合制">混合制</option>
+          </select>
           <label>注册资本</label><input name="capital" type="number" step="0.01" />
           <label>税务计算描述</label><textarea name="tax_info"></textarea>
         </div>
@@ -520,6 +534,109 @@ async function renderTools() {
     return;
   }
 
+  const toolExamples = [
+    {
+      id: 'web_search',
+      name: '网页搜索（SERP）',
+      category: '信息检索',
+      integration_mode: 'API',
+      auth_type: 'API Key',
+      description: '用于联网检索最新资讯、政策、竞品与事实核查。',
+      responsibility_scope: '当任务需要外部事实时，先检索再回答，并给出来源摘要。',
+      config: { base_url: 'https://api.search.example/v1', endpoint: '/search', timeout_ms: 15000 },
+    },
+    {
+      id: 'web_scraper',
+      name: '网页抓取（Crawler）',
+      category: '数据采集',
+      integration_mode: 'MCP',
+      auth_type: '无需认证',
+      description: '抓取指定网页正文、标题与结构化字段，支持批量链接。',
+      responsibility_scope: '只抓取用户授权站点，输出可追溯数据。',
+      config: { allow_domains: ['example.com'], max_pages: 50, extract_mode: 'article' },
+    },
+    {
+      id: 'knowledge_base',
+      name: '企业知识库检索',
+      category: '知识库',
+      integration_mode: 'MCP',
+      auth_type: 'Token',
+      description: '向量检索企业制度、SOP 与历史案例。',
+      responsibility_scope: '优先返回企业内部知识，找不到再建议外部查询。',
+      config: { index_name: 'company_kb', top_k: 5, rerank: true },
+    },
+    {
+      id: 'sql_report',
+      name: 'SQL 报表工具',
+      category: '数据分析',
+      integration_mode: 'API',
+      auth_type: 'OAuth2',
+      description: '执行白名单 SQL 模板，输出业务报表。',
+      responsibility_scope: '仅使用预设模板与参数，禁止任意 SQL。',
+      config: { datasource: 'finance_dw', allowed_templates: ['daily_revenue', 'cost_breakdown'] },
+    },
+    {
+      id: 'sheet_sync',
+      name: '表格同步工具',
+      category: '协作办公',
+      integration_mode: 'API',
+      auth_type: 'OAuth2',
+      description: '同步在线表格，适合运营台账回写与共享。',
+      responsibility_scope: '写入前先校验字段映射和去重键。',
+      config: { provider: 'google_sheets', spreadsheet_id: 'demo_sheet_id' },
+    },
+    {
+      id: 'mail_sender',
+      name: '邮件发送',
+      category: '沟通通知',
+      integration_mode: 'API',
+      auth_type: 'API Key',
+      description: '发送通知、审批结果和客户触达邮件。',
+      responsibility_scope: '仅可发送模板邮件并记录发送日志。',
+      config: { sender: 'noreply@signx.local', template_mode: true },
+    },
+    {
+      id: 'im_bot',
+      name: 'IM 机器人（飞书/钉钉/Slack）',
+      category: '沟通通知',
+      integration_mode: 'Webhook',
+      auth_type: 'Token',
+      description: '推送告警、日报与流程状态更新。',
+      responsibility_scope: '只发工作群，消息带来源与负责人。',
+      config: { webhook_url: 'https://hooks.example.com/bot/xxx', mention_policy: 'owner_on_error' },
+    },
+    {
+      id: 'ocr_parser',
+      name: 'OCR 文档解析',
+      category: '文档处理',
+      integration_mode: 'API',
+      auth_type: 'API Key',
+      description: '识别发票、合同、回单并结构化字段。',
+      responsibility_scope: '返回识别置信度，低置信字段要求人工复核。',
+      config: { language: 'zh-CN', doc_types: ['invoice', 'contract'] },
+    },
+    {
+      id: 'calendar_scheduler',
+      name: '日程排班',
+      category: '协作办公',
+      integration_mode: 'API',
+      auth_type: 'OAuth2',
+      description: '创建会议、排班和截止提醒。',
+      responsibility_scope: '冲突时优先给出候选时间，不直接覆盖。',
+      config: { timezone: 'Asia/Shanghai', default_duration_min: 30 },
+    },
+    {
+      id: 'workflow_engine',
+      name: '流程引擎（审批/工单）',
+      category: '流程自动化',
+      integration_mode: 'MCP',
+      auth_type: 'Token',
+      description: '触发审批流、工单流和跨系统自动化流程。',
+      responsibility_scope: '关键节点必须记录审计轨迹，支持回滚。',
+      config: { process_keys: ['expense_approval', 'it_ticket'], audit_required: true },
+    },
+  ];
+
   let tools = [];
   try {
     tools = await api(`/tools?company_id=${state.companyId}`);
@@ -530,47 +647,207 @@ async function renderTools() {
   el.appendChild(
     card(`
       <h3>工具中心与自动化</h3>
+      <div class="guide-steps">
+        <div class="step"><strong>1. 选样例或手动填写</strong><span>先选择常用样例可快速生成配置。</span></div>
+        <div class="step"><strong>2. 定义职责范围</strong><span>输入工具职责，系统会生成可复用 AI Prompt。</span></div>
+        <div class="step"><strong>3. 验证并保存</strong><span>保存后可在下方编辑，并用于 Openclaw 调度。</span></div>
+      </div>
       <div class="grid">
         <form id="toolForm" class="item">
-          <h4>工具注册与配置（MCP）</h4>
+          <h4>工具注册与配置（支持编辑）</h4>
+          <label>快捷样例（10种常用工具）</label>
+          <select id="toolTemplatePicker">
+            <option value="">手动填写</option>
+            ${toolExamples.map((tool) => `<option value="${tool.id}">${tool.name}</option>`).join('')}
+          </select>
           <label>工具名称</label><input name="name" required />
+          <label>工具分类</label>
+          <select name="category">
+            <option value="信息检索">信息检索</option>
+            <option value="数据采集">数据采集</option>
+            <option value="知识库">知识库</option>
+            <option value="数据分析">数据分析</option>
+            <option value="协作办公">协作办公</option>
+            <option value="沟通通知">沟通通知</option>
+            <option value="文档处理">文档处理</option>
+            <option value="流程自动化">流程自动化</option>
+            <option value="其他">其他</option>
+          </select>
+          <label>接入模式</label>
+          <select name="integration_mode">
+            <option value="MCP">MCP</option>
+            <option value="API" selected>API</option>
+            <option value="Webhook">Webhook</option>
+            <option value="SDK">SDK</option>
+          </select>
+          <label>认证方式</label>
+          <select name="auth_type">
+            <option value="API Key" selected>API Key</option>
+            <option value="OAuth2">OAuth2</option>
+            <option value="Token">Token</option>
+            <option value="无需认证">无需认证</option>
+          </select>
           <label>描述</label><textarea name="description"></textarea>
-          <label>配置（JSON）</label><textarea name="config">{"base_url":""}</textarea>
+          <label>职责边界（用于生成 Prompt）</label><textarea name="responsibility_scope" placeholder="例如：仅做财务报表汇总，不做会计分录修改。"></textarea>
+          <div class="inline-actions">
+            <button id="generatePromptBtn" type="button" class="secondary-btn">生成 AI Prompt</button>
+            <button id="clearEditBtn" type="button" class="ghost-btn">清空编辑状态</button>
+          </div>
+          <label>AI Prompt（可复用）</label><textarea name="ai_prompt" id="aiPromptField" placeholder="点击“生成 AI Prompt”后自动填充"></textarea>
+          <label>配置（JSON）</label><textarea name="config" id="toolConfigField">{"base_url":""}</textarea>
           <label><input type="checkbox" name="supported_by_mcp" /> 支持 MCP 标准接入</label>
-          <button class="primary-btn">注册工具</button>
+          <input type="hidden" name="editing_tool_id" />
+          <button class="primary-btn" type="submit">保存工具</button>
         </form>
         <form id="openclawForm" class="item">
           <h4>Openclaw 自动化执行</h4>
           <label>任务名</label><input name="task_name" required />
           <label>执行载荷（JSON）</label><textarea name="payload">{"run":"demo"}</textarea>
-          <button class="secondary-btn">提交执行</button>
+          <button class="secondary-btn" type="submit">提交执行</button>
         </form>
       </div>
-      <h4>工具清单</h4>
+      <h4>工具清单（可编辑）</h4>
       <div id="toolList" class="data-list"></div>
     `),
   );
 
-  document.getElementById('toolList').innerHTML = tools
-    .map((tool) => `<div class="item"><strong>${tool.name}</strong> <span class="tag">${tool.supported_by_mcp ? 'MCP' : 'custom'}</span><div class="small">${tool.description || ''}</div><pre>${JSON.stringify(tool.config, null, 2)}</pre></div>`)
+  const toolForm = document.getElementById('toolForm');
+  const toolTemplatePicker = document.getElementById('toolTemplatePicker');
+  const toolListEl = document.getElementById('toolList');
+  const clearEditBtn = document.getElementById('clearEditBtn');
+  const generatePromptBtn = document.getElementById('generatePromptBtn');
+
+  const buildPrompt = (payload) => {
+    const responsibilities = payload.responsibility_scope || '按照用户输入执行并保持结果可追溯';
+    return [
+      `你是 ${payload.name || '企业工具'} 的调度代理。`,
+      `工具分类：${payload.category || '其他'}；接入模式：${payload.integration_mode || 'API'}；认证方式：${payload.auth_type || 'API Key'}。`,
+      `职责边界：${responsibilities}。`,
+      '执行规范：先校验输入参数，再调用工具；输出包含关键结果、异常信息、下一步建议。',
+      '安全要求：不得泄露密钥，不执行越权操作，保留审计字段（操作者、时间、参数摘要）。',
+    ].join('\n');
+  };
+
+  const resetToolForm = () => {
+    toolForm.reset();
+    toolForm.elements.config.value = '{"base_url":""}';
+    toolForm.elements.editing_tool_id.value = '';
+    toolTemplatePicker.value = '';
+    document.querySelector('#toolForm button[type="submit"]').textContent = '保存工具';
+  };
+
+  toolTemplatePicker.onchange = () => {
+    const picked = toolExamples.find((tool) => tool.id === toolTemplatePicker.value);
+    if (!picked) {
+      return;
+    }
+    toolForm.elements.name.value = picked.name;
+    toolForm.elements.category.value = picked.category;
+    toolForm.elements.integration_mode.value = picked.integration_mode;
+    toolForm.elements.auth_type.value = picked.auth_type;
+    toolForm.elements.description.value = picked.description;
+    toolForm.elements.responsibility_scope.value = picked.responsibility_scope;
+    toolForm.elements.supported_by_mcp.checked = picked.integration_mode === 'MCP';
+    toolForm.elements.ai_prompt.value = buildPrompt(picked);
+    toolForm.elements.config.value = JSON.stringify(picked.config, null, 2);
+    setStatus(`已加载样例：${picked.name}`);
+  };
+
+  toolListEl.innerHTML = tools
+    .map((tool) => {
+      const config = tool.config || {};
+      return `<div class="item">
+        <div class="inline-actions">
+          <strong>${tool.name}</strong>
+          <span class="tag">${config.category || '未分类'}</span>
+          <span class="tag">${tool.supported_by_mcp ? 'MCP' : config.integration_mode || 'custom'}</span>
+          <button class="secondary-btn edit-tool-btn" data-id="${tool.id}">编辑</button>
+        </div>
+        <div class="small">${tool.description || '暂无描述'}</div>
+        <div class="small">职责：${config.responsibility_scope || '未定义'} </div>
+        <details>
+          <summary>查看配置与Prompt</summary>
+          <pre>${JSON.stringify(config, null, 2)}</pre>
+          <pre>${config.ai_prompt || '暂无 AI Prompt'}</pre>
+        </details>
+      </div>`;
+    })
     .join('');
 
-  document.getElementById('toolForm').onsubmit = async (e) => {
+  toolListEl.querySelectorAll('.edit-tool-btn').forEach((btn) => {
+    btn.onclick = () => {
+      const current = tools.find((tool) => tool.id === Number(btn.dataset.id));
+      if (!current) {
+        return;
+      }
+      const config = current.config || {};
+      toolForm.elements.name.value = current.name || '';
+      toolForm.elements.description.value = current.description || '';
+      toolForm.elements.category.value = config.category || '其他';
+      toolForm.elements.integration_mode.value = config.integration_mode || (current.supported_by_mcp ? 'MCP' : 'API');
+      toolForm.elements.auth_type.value = config.auth_type || 'API Key';
+      toolForm.elements.responsibility_scope.value = config.responsibility_scope || '';
+      toolForm.elements.ai_prompt.value = config.ai_prompt || '';
+      toolForm.elements.config.value = JSON.stringify(config, null, 2);
+      toolForm.elements.supported_by_mcp.checked = Boolean(current.supported_by_mcp);
+      toolForm.elements.editing_tool_id.value = current.id;
+      toolTemplatePicker.value = '';
+      document.querySelector('#toolForm button[type="submit"]').textContent = `更新工具 #${current.id}`;
+      toolForm.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      setStatus(`正在编辑：${current.name}`);
+    };
+  });
+
+  generatePromptBtn.onclick = () => {
+    const payload = Object.fromEntries(new FormData(toolForm).entries());
+    toolForm.elements.ai_prompt.value = buildPrompt(payload);
+    setStatus('已生成 AI Prompt，可继续修改后保存。');
+  };
+
+  clearEditBtn.onclick = () => {
+    resetToolForm();
+    setStatus('已清空编辑状态');
+  };
+
+  toolForm.onsubmit = async (e) => {
     e.preventDefault();
     const fd = new FormData(e.target);
     const payload = Object.fromEntries(fd.entries());
     payload.company_id = state.companyId;
     payload.supported_by_mcp = Boolean(fd.get('supported_by_mcp'));
+
+    let config = {};
     try {
-      payload.config = JSON.parse(payload.config || '{}');
+      config = JSON.parse(payload.config || '{}');
     } catch {
       setStatus('配置 JSON 格式错误', true);
       return;
     }
 
+    config.category = payload.category;
+    config.integration_mode = payload.integration_mode;
+    config.auth_type = payload.auth_type;
+    config.responsibility_scope = payload.responsibility_scope;
+    config.ai_prompt = payload.ai_prompt || buildPrompt(payload);
+    payload.config = config;
+
+    delete payload.category;
+    delete payload.integration_mode;
+    delete payload.auth_type;
+    delete payload.responsibility_scope;
+    delete payload.ai_prompt;
+
+    const editingId = payload.editing_tool_id;
+    delete payload.editing_tool_id;
+
     try {
-      await api('/tools', 'POST', payload);
-      setStatus('工具注册成功');
+      if (editingId) {
+        await api(`/tools/${editingId}`, 'PUT', payload);
+        setStatus(`工具 #${editingId} 更新成功`);
+      } else {
+        await api('/tools', 'POST', payload);
+        setStatus('工具注册成功');
+      }
       await renderTools();
     } catch (err) {
       setStatus(err.message, true);
@@ -597,6 +874,7 @@ async function renderTools() {
     }
   };
 }
+
 
 async function renderAdmin() {
   const el = document.getElementById('view-admin');
