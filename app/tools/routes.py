@@ -51,9 +51,32 @@ def list_tools():
             'description': tool.description,
             'supported_by_mcp': tool.supported_by_mcp,
             'config': tool.config,
+            'updated_at': tool.updated_at.isoformat() if tool.updated_at else None,
         }
         for tool in tools
     ])
+
+
+@bp.put('/<int:tool_id>')
+@login_required
+def update_tool(tool_id: int):
+    data = request.get_json() or {}
+    tool = Tool.query.get_or_404(tool_id)
+    if not ensure_company_scope(tool.company_id):
+        return api_error('forbidden', status=403)
+
+    if 'name' in data:
+        tool.name = data['name']
+    if 'description' in data:
+        tool.description = data.get('description')
+    if 'config' in data:
+        tool.config = data.get('config') or {}
+    if 'supported_by_mcp' in data:
+        tool.supported_by_mcp = bool(data.get('supported_by_mcp'))
+
+    log_action('tool.update', 'tool', str(tool.id), tool.company_id, {'name': tool.name})
+    db.session.commit()
+    return api_ok({'id': tool.id, 'name': tool.name})
 
 
 @bp.post('/openclaw/execute')
