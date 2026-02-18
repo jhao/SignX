@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SignX · SaaS 企业运营管理平台</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <div class="brand">SignX</div>
+        <nav id="navTabs" class="nav-tabs"></nav>
+      </aside>
+
+      <main class="main-content">
+        <header class="topbar">
+          <div>
+            <h1>SaaS 企业运营管理平台</h1>
+            <p>多租户、可审计、低认知负担的企业管理工作台</p>
+          </div>
+          <div class="topbar-actions">
+            <button id="langBtn" class="ghost-btn">EN</button>
+            <button id="refreshBtn" class="secondary-btn">刷新当前模块</button>
+            <button id="logoutBtn" class="danger-btn">退出登录</button>
+          </div>
+        </header>
+
+        <section id="statusBar" class="status-bar"></section>
+
+        <section id="view-auth" class="view-section"></section>
+        <section id="view-companies" class="view-section hidden"></section>
+        <section id="view-employees" class="view-section hidden"></section>
+        <section id="view-projects" class="view-section hidden"></section>
+        <section id="view-finance" class="view-section hidden"></section>
+        <section id="view-tools" class="view-section hidden"></section>
+        <section id="view-admin" class="view-section hidden"></section>
+      </main>
+    </div>
+
+    <template id="cardTemplate">
+      <article class="card"></article>
+    </template>
+
+    <script src="{{ url_for('static', filename='app.js') }}"></script>
+  </body>
+</html>

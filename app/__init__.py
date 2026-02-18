@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from flask import Flask
+from flask import Flask, render_template
 from flask_cors import CORS
 
 from .config import Config, get_config
@@ -37,5 +37,9 @@ def create_app(config_name: str | None = None) -> Flask:
     @app.get('/healthz')
     def healthz():
         return {'status': 'ok'}
+
+    @app.get('/')
+    def index():
+        return render_template('index.html')
 
     return app
