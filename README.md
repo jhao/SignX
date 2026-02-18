@@ -2,6 +2,8 @@
 
 本项目已按 `docs/saas_enterprise_platform_design.md` 重构为多租户 SaaS 企业运营管理平台后端（Flask + SQLAlchemy）。
 
+同时提供了一个内置前端控制台（Flask 模板 + 原生 JS），覆盖企业、员工、项目任务、财务看板、工具中心和平台管理页面，默认访问 `/`。
+
 ## 核心能力
 
 - 多租户企业管理（Company）
