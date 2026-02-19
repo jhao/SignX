@@ -75,3 +75,29 @@ def get_company(company_id: int):
             'goals': c.goals,
         }
     )
+
+
+@bp.put('/<int:company_id>')
+@login_required
+def update_company(company_id: int):
+    if not ensure_company_scope(company_id):
+        return api_error('forbidden', status=403)
+    data = request.get_json() or {}
+    company = Company.query.get_or_404(company_id)
+
+    for field in [
+        'name',
+        'business_model',
+        'description',
+        'accounting_method',
+        'capital',
+        'tax_info',
+        'organization_structure',
+        'goals',
+    ]:
+        if field in data:
+            setattr(company, field, data.get(field))
+
+    log_action('company.update', 'company', str(company.id), company.id, {'name': company.name})
+    db.session.commit()
+    return api_ok({'id': company.id, 'name': company.name})

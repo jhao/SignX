@@ -3,7 +3,9 @@ from __future__ import annotations
 from flask import request
 from flask_login import login_required
 
+from ..ai_service import AI_MODEL_SETTING_KEY, get_ai_model_settings, save_ai_model_settings
 from ..api_utils import api_error, api_ok, require_platform_roles
+from ..extensions import db
 from ..models import AuditLog, Company, PlatformRole, UserAccount
 from . import bp
 
@@ -63,3 +65,41 @@ def list_audits():
         }
         for log in logs
     ])
+
+
+@bp.get('/settings/ai-model')
+@login_required
+@require_platform_roles(PlatformRole.PLATFORM_ADMIN)
+def get_ai_model_setting():
+    settings = get_ai_model_settings()
+    if settings.get('api_key'):
+        settings['api_key'] = '***'
+    return api_ok(settings)
+
+
+@bp.put('/settings/ai-model')
+@login_required
+@require_platform_roles(PlatformRole.PLATFORM_ADMIN)
+def update_ai_model_setting():
+    data = request.get_json() or {}
+    required = {'provider', 'base_url', 'model'}
+    if not required.issubset(data):
+        return api_error('invalid_payload')
+
+    current = get_ai_model_settings()
+    incoming_key = data.get('api_key')
+    api_key = current.get('api_key') if incoming_key in (None, '', '***') else incoming_key
+    if not api_key:
+        return api_error('invalid_payload')
+
+    setting = save_ai_model_settings(
+        {
+            'provider': data.get('provider'),
+            'base_url': data.get('base_url'),
+            'model': data.get('model'),
+            'api_key': api_key,
+        }
+    )
+    db.session.merge(setting)
+    db.session.commit()
+    return api_ok({'key': AI_MODEL_SETTING_KEY})

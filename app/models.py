@@ -115,6 +115,7 @@ class Employee(db.Model, TimestampMixin):
     ai_provider: Mapped[str | None] = mapped_column(db.String(64))
     api_key_encrypted: Mapped[str | None] = mapped_column(db.String(512))
     photo_path: Mapped[str | None] = mapped_column(db.String(255))
+    agent_prompt: Mapped[str | None] = mapped_column(db.Text)
     created_by: Mapped[int | None] = mapped_column(ForeignKey('user_account.id'))
 
     company: Mapped['Company'] = relationship(back_populates='employees')
@@ -210,3 +211,10 @@ class AuditLog(db.Model):
     details: Mapped[dict] = mapped_column(db.JSON, default=dict)
     ip_address: Mapped[str | None] = mapped_column(db.String(64))
     created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
+
+
+class SystemSetting(db.Model, TimestampMixin):
+    __tablename__ = 'system_setting'
+
+    key: Mapped[str] = mapped_column(db.String(128), primary_key=True)
+    value: Mapped[dict] = mapped_column(db.JSON, default=dict)
