@@ -202,7 +202,8 @@ async function renderCompanies() {
         </div>
         <div class="item">
           <h4>组织结构</h4>
-          <label>组织结构说明</label><textarea name="organization_structure"></textarea>
+          <label>组织结构（结构化JSON）</label><textarea name="organization_structure" placeholder="[{"name":"研发负责人","description":"负责研发管理"}]"></textarea>
+          <label>组织结构（批量编辑，每行：角色|描述）</label><textarea name="organization_structure_lines" placeholder="研发负责人|负责技术路线与研发推进\n产品经理|负责需求分析与产品规划"></textarea>
           <button class="primary-btn" type="submit">保存企业</button>
           <button class="secondary-btn" id="clearCompanyEdit" type="button">清空编辑</button>
         </div>
@@ -238,6 +239,7 @@ async function renderCompanies() {
         Object.entries(detail).forEach(([k, v]) => {
           if (form.elements[k]) form.elements[k].value = v || '';
         });
+        form.elements.organization_structure_lines.value = (detail.organization_structure_items || []).map((item) => `${item.name}|${item.description || ''}`).join('\n');
         form.elements.editing_company_id.value = detail.id;
         setStatus(`正在编辑企业：${detail.name}`);
       } catch (err) {
@@ -281,8 +283,12 @@ async function renderEmployees() {
   }
 
   let employees = [];
+  let organizationRoles = [];
   try {
-    employees = await api(`/employees?company_id=${state.companyId}`);
+    [employees, organizationRoles] = await Promise.all([
+      api(`/employees?company_id=${state.companyId}`),
+      api(`/employees/organization-roles?company_id=${state.companyId}`),
+    ]);
   } catch (err) {
     setStatus(err.message, true);
   }
@@ -295,7 +301,9 @@ async function renderEmployees() {
         <div class="item">
           <label>姓名</label><input name="name" required />
           <label>岗位职责</label><textarea name="primary_tasks"></textarea>
-          <label>公司角色</label>
+          <label>组织机构角色</label>
+          <select name="organization_role" id="organizationRoleSelect"><option value="">请选择</option></select>
+          <label>公司角色（系统权限）</label>
           <select name="company_role">
             <option value="owner">owner</option><option value="finance_manager">finance_manager</option><option value="hr_manager">hr_manager</option><option value="project_lead">project_lead</option><option value="member" selected>member</option>
           </select>
@@ -314,7 +322,7 @@ async function renderEmployees() {
   const list = card('<h3>员工列表</h3><div id="employeeList" class="data-list"></div>');
   list.querySelector('#employeeList').innerHTML = employees
     .map(
-      (e) => `<div class="item"><strong>${e.name}</strong> <span class="tag">${e.company_role}</span>
+      (e) => `<div class="item"><strong>${e.name}</strong> <span class="tag">${e.organization_role || e.company_role}</span>
       <div class="small">职责：${e.primary_tasks || '未填写'}</div>
       <div class="small">Prompt：${e.agent_prompt || '未生成'}</div>
       <button class="secondary-btn edit-employee" data-id="${e.id}">编辑</button></div>`,
@@ -323,11 +331,14 @@ async function renderEmployees() {
   el.appendChild(list);
 
   const form = document.getElementById('employeeForm');
+  const roleSelect = document.getElementById('organizationRoleSelect');
+  roleSelect.innerHTML = '<option value="">请选择</option>' + organizationRoles.map((role) => `<option value="${role.name}">${role.name}（${role.description || '无描述'}）</option>`).join('');
   const fillForm = (employee) => {
     form.elements.editing_employee_id.value = employee.id;
     form.elements.name.value = employee.name || '';
     form.elements.primary_tasks.value = employee.primary_tasks || '';
     form.elements.company_role.value = employee.company_role || 'member';
+    form.elements.organization_role.value = employee.organization_role || '';
     form.elements.ai_provider.value = employee.ai_provider || '';
     form.elements.agent_prompt.value = employee.agent_prompt || '';
   };
@@ -406,7 +417,7 @@ async function renderProjects() {
     return;
   }
 
-  const employeeOptions = employees.map((e) => `<option value="${e.id}">${e.name}</option>`).join('');
+  const employeeOptions = employees.map((e) => `<option value="${e.id}">${e.name}（${e.organization_role || e.company_role}）</option>`).join('');
 
   el.appendChild(
     card(`
@@ -449,15 +460,26 @@ async function renderProjects() {
       tasks = [];
     }
     const listView = tasks
-      .map((task) => `<div class="item">${task.description} <span class="tag">${task.status}</span></div>`)
+      .map((task) => `<div class="item">${task.description} <span class="tag">${task.status}</span><div class="small">责任人：${task.assignee_display || '未分配'}</div><button class="secondary-btn run-task-btn" data-task-id="${task.id}">AI执行规划</button></div>`)
       .join('');
 
     listEl.appendChild(
-      card(`<h4>${project.name}</h4><div class="small">目标：${project.objective || '未填写'} | 负责人：${employees.find((e) => e.id === project.lead_id)?.name || '未分配'}</div>
+      card(`<h4>${project.name}</h4><div class="small">目标：${project.objective || '未填写'} | 负责人：${project.lead_display || '未分配'}</div>
       <p class="small">列表视图</p>${listView || '<div class="small">暂无任务</div>'}
       <p class="small">看板视图</p>${renderTasksKanban(tasks)}`),
     );
   }
+
+  listEl.querySelectorAll('.run-task-btn').forEach((btn) => {
+    btn.onclick = async () => {
+      try {
+        const result = await api(`/projects/tasks/${btn.dataset.taskId}/execute`, 'POST', {});
+        setStatus(`任务 #${result.task_id} 已生成执行计划`);
+      } catch (err) {
+        setStatus(err.message, true);
+      }
+    };
+  });
 
   document.getElementById('projectForm').onsubmit = async (e) => {
     e.preventDefault();
@@ -933,10 +955,9 @@ async function renderAdmin() {
       </div>
       <form id="aiModelSettingForm" class="item">
         <h4>系统设置：全局 AI 模型 API</h4>
-        <label>Provider</label><input name="provider" value="${aiSettings.provider || ''}" required />
-        <label>Base URL</label><input name="base_url" value="${aiSettings.base_url || ''}" required />
-        <label>Model</label><input name="model" value="${aiSettings.model || ''}" required />
-        <label>API Key</label><input name="api_key" type="password" placeholder="${aiSettings.api_key ? '已配置，留空不修改' : '请输入Key'}" />
+        <label>预置模型</label><select name="preset_id" required>${(aiSettings.presets || []).map((preset) => `<option value="${preset.id}" ${aiSettings.current?.preset_id === preset.id ? 'selected' : ''}>${preset.label} | ${preset.base_url} | ${preset.model}</option>`).join('')}</select>
+        <div class="small">接口地址/模型类型/模型名由预置自动带出，仅需填写或更新 API Key。</div>
+        <label>API Key</label><input name="api_key" type="password" placeholder="${aiSettings.current?.api_key ? '已配置，留空不修改' : '请输入Key'}" />
         <button class="primary-btn" type="submit">保存系统AI配置</button>
       </form>
     `;

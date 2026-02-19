@@ -112,6 +112,7 @@ class Employee(db.Model, TimestampMixin):
     primary_tasks: Mapped[str | None] = mapped_column(db.Text)
     role_id: Mapped[int | None] = mapped_column(ForeignKey('role.id'))
     company_role: Mapped[CompanyRole] = mapped_column(Enum(CompanyRole), default=CompanyRole.MEMBER)
+    organization_role: Mapped[str | None] = mapped_column(db.String(128))
     ai_provider: Mapped[str | None] = mapped_column(db.String(64))
     api_key_encrypted: Mapped[str | None] = mapped_column(db.String(512))
     photo_path: Mapped[str | None] = mapped_column(db.String(255))

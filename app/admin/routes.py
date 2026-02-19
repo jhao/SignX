@@ -3,7 +3,13 @@ from __future__ import annotations
 from flask import request
 from flask_login import login_required
 
-from ..ai_service import AI_MODEL_SETTING_KEY, get_ai_model_settings, save_ai_model_settings
+from ..ai_service import (
+    AI_MODEL_SETTING_KEY,
+    get_model_preset,
+    get_ai_model_settings,
+    get_model_presets,
+    save_ai_model_settings,
+)
 from ..api_utils import api_error, api_ok, require_platform_roles
 from ..extensions import db
 from ..models import AuditLog, Company, PlatformRole, UserAccount
@@ -72,9 +78,10 @@ def list_audits():
 @require_platform_roles(PlatformRole.PLATFORM_ADMIN)
 def get_ai_model_setting():
     settings = get_ai_model_settings()
-    if settings.get('api_key'):
-        settings['api_key'] = '***'
-    return api_ok(settings)
+    sanitized = dict(settings)
+    if sanitized.get('api_key'):
+        sanitized['api_key'] = '***'
+    return api_ok({'current': sanitized, 'presets': get_model_presets()})
 
 
 @bp.put('/settings/ai-model')
@@ -82,8 +89,8 @@ def get_ai_model_setting():
 @require_platform_roles(PlatformRole.PLATFORM_ADMIN)
 def update_ai_model_setting():
     data = request.get_json() or {}
-    required = {'provider', 'base_url', 'model'}
-    if not required.issubset(data):
+    preset = get_model_preset(data.get('preset_id'))
+    if not preset:
         return api_error('invalid_payload')
 
     current = get_ai_model_settings()
@@ -94,9 +101,11 @@ def update_ai_model_setting():
 
     setting = save_ai_model_settings(
         {
-            'provider': data.get('provider'),
-            'base_url': data.get('base_url'),
-            'model': data.get('model'),
+            'preset_id': preset['id'],
+            'provider': preset['provider'],
+            'model_type': preset['model_type'],
+            'base_url': preset['base_url'],
+            'model': preset['model'],
             'api_key': api_key,
         }
     )
