@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+
 from flask import request
 from flask_login import current_user, login_required
 
@@ -8,6 +10,24 @@ from ..extensions import db
 from ..models import Company, UserAccount
 from . import bp
 
+def _normalize_organization_structure(data: dict):
+    if 'organization_structure_lines' in data and 'organization_structure' not in data:
+        rows = []
+        for raw_line in (data.get('organization_structure_lines') or '').splitlines():
+            line = raw_line.strip()
+            if not line:
+                continue
+            if '|' in line:
+                name, description = [part.strip() for part in line.split('|', 1)]
+            else:
+                name, description = line, ''
+            if name:
+                rows.append({'name': name, 'description': description})
+        data['organization_structure'] = json.dumps(rows, ensure_ascii=False)
+
+    if 'organization_structure' in data and isinstance(data.get('organization_structure'), list):
+        data['organization_structure'] = json.dumps(data['organization_structure'], ensure_ascii=False)
+
 
 @bp.post('')
 @login_required
@@ -15,6 +35,8 @@ def create_company():
     data = request.get_json() or {}
     if 'name' not in data:
         return api_error('invalid_payload')
+
+    _normalize_organization_structure(data)
 
     company = Company(
         name=data['name'],
@@ -72,6 +94,7 @@ def get_company(company_id: int):
             'capital': c.capital,
             'tax_info': c.tax_info,
             'organization_structure': c.organization_structure,
+            'organization_structure_items': json.loads(c.organization_structure) if c.organization_structure else [],
             'goals': c.goals,
         }
     )
@@ -83,6 +106,7 @@ def update_company(company_id: int):
     if not ensure_company_scope(company_id):
         return api_error('forbidden', status=403)
     data = request.get_json() or {}
+    _normalize_organization_structure(data)
     company = Company.query.get_or_404(company_id)
 
     for field in [

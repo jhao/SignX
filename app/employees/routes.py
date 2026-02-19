@@ -1,13 +1,42 @@
 from __future__ import annotations
 
+import json
+
 from flask import request
 from flask_login import current_user, login_required
 
 from ..ai_service import generate_employee_agent_prompt
 from ..api_utils import api_error, api_ok, ensure_company_scope, log_action
 from ..extensions import db
-from ..models import CompanyRole, Employee
+from ..models import Company, CompanyRole, Employee
 from . import bp
+
+def _company_org_roles(company: Company) -> list[dict[str, str]]:
+    if not company.organization_structure:
+        return []
+    try:
+        rows = json.loads(company.organization_structure)
+    except json.JSONDecodeError:
+        return []
+    if not isinstance(rows, list):
+        return []
+    normalized = []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        name = (row.get('name') or '').strip()
+        if not name:
+            continue
+        normalized.append({'name': name, 'description': (row.get('description') or '').strip()})
+    return normalized
+
+
+def _ensure_org_role(company: Company, organization_role: str | None) -> bool:
+    role_name = (organization_role or '').strip()
+    if not role_name:
+        return True
+    names = {item['name'] for item in _company_org_roles(company)}
+    return role_name in names
 
 
 def _apply_employee_payload(employee: Employee, data: dict):
@@ -19,6 +48,8 @@ def _apply_employee_payload(employee: Employee, data: dict):
         employee.role_id = data.get('role_id')
     if 'company_role' in data and data.get('company_role'):
         employee.company_role = CompanyRole(data.get('company_role'))
+    if 'organization_role' in data:
+        employee.organization_role = data.get('organization_role')
     if 'ai_provider' in data:
         employee.ai_provider = data.get('ai_provider')
     if 'api_key_encrypted' in data:
@@ -38,24 +69,30 @@ def create_employee():
     if not ensure_company_scope(company_id):
         return api_error('forbidden', status=403)
 
+    company = Company.query.get_or_404(company_id)
+
     employee = Employee(
         company_id=company_id,
         name=data['name'],
         primary_tasks=data.get('primary_tasks'),
         role_id=data.get('role_id'),
         company_role=CompanyRole(data.get('company_role', CompanyRole.MEMBER.value)),
+        organization_role=data.get('organization_role'),
         ai_provider=data.get('ai_provider'),
         api_key_encrypted=data.get('api_key_encrypted'),
         photo_path=data.get('photo_path'),
         created_by=current_user.id,
     )
 
+    if not _ensure_org_role(company, employee.organization_role):
+        return api_error('invalid_payload')
+
     if data.get('generate_agent_prompt'):
         try:
             employee.agent_prompt = generate_employee_agent_prompt(
                 name=employee.name,
                 primary_tasks=employee.primary_tasks,
-                company_role=employee.company_role.value,
+                company_role=employee.organization_role or employee.company_role.value,
             )
         except ValueError as exc:
             if str(exc) == 'ai_model_not_configured':
@@ -74,18 +111,22 @@ def create_employee():
 @login_required
 def update_employee(employee_id: int):
     employee = Employee.query.get_or_404(employee_id)
+    company = Company.query.get_or_404(employee.company_id)
     if not ensure_company_scope(employee.company_id):
         return api_error('forbidden', status=403)
 
     data = request.get_json() or {}
     _apply_employee_payload(employee, data)
 
+    if not _ensure_org_role(company, employee.organization_role):
+        return api_error('invalid_payload')
+
     if data.get('generate_agent_prompt'):
         try:
             employee.agent_prompt = generate_employee_agent_prompt(
                 name=employee.name,
                 primary_tasks=employee.primary_tasks,
-                company_role=employee.company_role.value,
+                company_role=employee.organization_role or employee.company_role.value,
             )
         except ValueError as exc:
             if str(exc) == 'ai_model_not_configured':
@@ -100,6 +141,21 @@ def update_employee(employee_id: int):
     log_action('employee.update', 'employee', str(employee.id), employee.company_id, {'name': employee.name})
     db.session.commit()
     return api_ok({'id': employee.id, 'name': employee.name, 'agent_prompt': employee.agent_prompt})
+
+
+
+
+@bp.get('/organization-roles')
+@login_required
+def list_organization_roles():
+    company_id = request.args.get('company_id', type=int) or current_user.company_id
+    if not company_id:
+        return api_error('company_id_required')
+    if not ensure_company_scope(company_id):
+        return api_error('forbidden', status=403)
+
+    company = Company.query.get_or_404(company_id)
+    return api_ok(_company_org_roles(company))
 
 
 @bp.get('')
@@ -117,6 +173,7 @@ def list_employees():
             'id': e.id,
             'name': e.name,
             'company_role': e.company_role.value,
+            'organization_role': e.organization_role,
             'primary_tasks': e.primary_tasks,
             'ai_provider': e.ai_provider,
             'agent_prompt': e.agent_prompt,
