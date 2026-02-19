@@ -186,38 +186,25 @@ async function renderCompanies() {
       <h3>企业创建与组织配置</h3>
       <p class="small">按“基础信息 / 财务制度 / 组织结构”填写，低频字段可后补。</p>
       <form id="companyForm" class="grid">
+        <input type="hidden" name="editing_company_id" />
         <div class="item">
           <h4>基础信息</h4>
           <label>公司名称</label><input name="name" required />
-          <label>业务模式</label>
-          <select name="business_model">
-            <option value="">请选择</option>
-            <option value="SaaS">SaaS</option>
-            <option value="咨询服务">咨询服务</option>
-            <option value="电商">电商</option>
-            <option value="制造">制造</option>
-            <option value="其他">其他</option>
-          </select>
+          <label>业务模式</label><input name="business_model" />
           <label>企业目标</label><textarea name="goals"></textarea>
           <label>主营业务描述</label><textarea name="description"></textarea>
         </div>
         <div class="item">
           <h4>财务制度</h4>
-          <label>记账方式</label>
-          <select name="accounting_method">
-            <option value="">请选择</option>
-            <option value="权责发生制">权责发生制</option>
-            <option value="收付实现制">收付实现制</option>
-            <option value="混合制">混合制</option>
-          </select>
+          <label>记账方式</label><input name="accounting_method" />
           <label>注册资本</label><input name="capital" type="number" step="0.01" />
           <label>税务计算描述</label><textarea name="tax_info"></textarea>
         </div>
         <div class="item">
           <h4>组织结构</h4>
           <label>组织结构说明</label><textarea name="organization_structure"></textarea>
-          <p class="small">提示：未分配岗位建议后续在员工管理中补齐。</p>
-          <button class="primary-btn" type="submit">创建企业</button>
+          <button class="primary-btn" type="submit">保存企业</button>
+          <button class="secondary-btn" id="clearCompanyEdit" type="button">清空编辑</button>
         </div>
       </form>
     `),
@@ -232,24 +219,52 @@ async function renderCompanies() {
         <strong>${c.name}</strong>
         <div class="small">模式：${c.business_model || '未填写'} | 记账：${c.accounting_method || '未填写'}</div>
         <button data-company="${c.id}" class="secondary-btn pick-company">设为当前企业</button>
+        <button data-edit-company="${c.id}" class="secondary-btn edit-company">编辑</button>
       </div>`,
     )
     .join('');
 
+  const form = document.getElementById('companyForm');
   listEl.querySelectorAll('.pick-company').forEach((btn) => {
     btn.onclick = () => {
       state.companyId = Number(btn.dataset.company);
       setStatus(`已切换当前企业：${state.companyId}`);
     };
   });
+  listEl.querySelectorAll('.edit-company').forEach((btn) => {
+    btn.onclick = async () => {
+      try {
+        const detail = await api(`/companies/${Number(btn.dataset.editCompany)}`);
+        Object.entries(detail).forEach(([k, v]) => {
+          if (form.elements[k]) form.elements[k].value = v || '';
+        });
+        form.elements.editing_company_id.value = detail.id;
+        setStatus(`正在编辑企业：${detail.name}`);
+      } catch (err) {
+        setStatus(err.message, true);
+      }
+    };
+  });
 
-  document.getElementById('companyForm').onsubmit = async (e) => {
+  document.getElementById('clearCompanyEdit').onclick = () => {
+    form.reset();
+    form.elements.editing_company_id.value = '';
+  };
+
+  form.onsubmit = async (e) => {
     e.preventDefault();
     const payload = Object.fromEntries(new FormData(e.target).entries());
+    const editingId = payload.editing_company_id;
+    delete payload.editing_company_id;
     try {
-      const company = await api('/companies', 'POST', payload);
-      state.companyId = company.id;
-      setStatus(`企业创建成功：${company.name}`);
+      if (editingId) {
+        await api(`/companies/${editingId}`, 'PUT', payload);
+        setStatus(`企业 #${editingId} 更新成功`);
+      } else {
+        const company = await api('/companies', 'POST', payload);
+        state.companyId = company.id;
+        setStatus(`企业创建成功：${company.name}`);
+      }
       await renderCompanies();
     } catch (err) {
       setStatus(err.message, true);
@@ -276,30 +291,21 @@ async function renderEmployees() {
     card(`
       <h3>员工与角色管理</h3>
       <form id="employeeForm" class="grid">
+        <input type="hidden" name="editing_employee_id" />
         <div class="item">
           <label>姓名</label><input name="name" required />
           <label>岗位职责</label><textarea name="primary_tasks"></textarea>
           <label>公司角色</label>
           <select name="company_role">
-            <option value="owner">owner</option>
-            <option value="finance_manager">finance_manager</option>
-            <option value="hr_manager">hr_manager</option>
-            <option value="project_lead">project_lead</option>
-            <option value="member" selected>member</option>
+            <option value="owner">owner</option><option value="finance_manager">finance_manager</option><option value="hr_manager">hr_manager</option><option value="project_lead">project_lead</option><option value="member" selected>member</option>
           </select>
         </div>
         <div class="item">
-          <label>AI 服务商</label>
-          <select name="ai_provider">
-            <option value="">未设置</option>
-            <option>OpenAI</option><option>Gemini</option><option>Claude</option><option>DeepSeek</option><option>Kimi</option><option>ChatGLM</option><option>Custom</option>
-          </select>
-          <details>
-            <summary>高级配置（折叠）</summary>
-            <label>API Key（敏感）</label><input name="api_key_encrypted" type="password" />
-            <div class="small">显示将脱敏为 *** ，提交前请确认。</div>
-          </details>
-          <button class="primary-btn" type="submit">新增员工</button>
+          <label>AI 服务商</label><input name="ai_provider" />
+          <label>智能体提示词</label><textarea name="agent_prompt"></textarea>
+          <button class="secondary-btn" id="generatePromptBtn" type="button">AI 生成提示词</button>
+          <button class="primary-btn" type="submit">保存员工</button>
+          <button class="secondary-btn" id="clearEmployeeEdit" type="button">清空编辑</button>
         </div>
       </form>
     `),
@@ -310,48 +316,75 @@ async function renderEmployees() {
     .map(
       (e) => `<div class="item"><strong>${e.name}</strong> <span class="tag">${e.company_role}</span>
       <div class="small">职责：${e.primary_tasks || '未填写'}</div>
-      <div class="small">AI：${e.ai_provider || '未配置'} | Key：${e.api_key_masked || '空'}</div></div>`,
+      <div class="small">Prompt：${e.agent_prompt || '未生成'}</div>
+      <button class="secondary-btn edit-employee" data-id="${e.id}">编辑</button></div>`,
     )
     .join('');
   el.appendChild(list);
 
-  document.getElementById('employeeForm').onsubmit = async (evt) => {
+  const form = document.getElementById('employeeForm');
+  const fillForm = (employee) => {
+    form.elements.editing_employee_id.value = employee.id;
+    form.elements.name.value = employee.name || '';
+    form.elements.primary_tasks.value = employee.primary_tasks || '';
+    form.elements.company_role.value = employee.company_role || 'member';
+    form.elements.ai_provider.value = employee.ai_provider || '';
+    form.elements.agent_prompt.value = employee.agent_prompt || '';
+  };
+
+  list.querySelectorAll('.edit-employee').forEach((btn) => {
+    btn.onclick = () => {
+      const target = employees.find((e) => e.id === Number(btn.dataset.id));
+      if (!target) return;
+      fillForm(target);
+      setStatus(`正在编辑员工：${target.name}`);
+    };
+  });
+
+  document.getElementById('generatePromptBtn').onclick = async () => {
+    const payload = Object.fromEntries(new FormData(form).entries());
+    payload.company_id = state.companyId;
+    payload.generate_agent_prompt = true;
+    try {
+      if (payload.editing_employee_id) {
+        const result = await api(`/employees/${payload.editing_employee_id}`, 'PUT', payload);
+        form.elements.agent_prompt.value = result.agent_prompt || '';
+      } else {
+        const created = await api('/employees', 'POST', payload);
+        form.elements.editing_employee_id.value = created.id;
+        form.elements.agent_prompt.value = created.agent_prompt || '';
+      }
+      setStatus('AI 提示词已生成');
+      await renderEmployees();
+    } catch (err) {
+      setStatus(err.message === 'ai_model_not_configured' ? '系统AI模型未配置，请先在系统设置中配置。' : err.message, true);
+    }
+  };
+
+  document.getElementById('clearEmployeeEdit').onclick = () => {
+    form.reset();
+    form.elements.editing_employee_id.value = '';
+  };
+
+  form.onsubmit = async (evt) => {
     evt.preventDefault();
     const payload = Object.fromEntries(new FormData(evt.target).entries());
     payload.company_id = state.companyId;
-    if (payload.api_key_encrypted && !window.confirm('即将保存敏感 API Key，是否确认？')) {
-      return;
-    }
+    const editingId = payload.editing_employee_id;
+    delete payload.editing_employee_id;
     try {
-      await api('/employees', 'POST', payload);
-      setStatus('员工创建成功');
+      if (editingId) {
+        await api(`/employees/${editingId}`, 'PUT', payload);
+        setStatus('员工更新成功');
+      } else {
+        await api('/employees', 'POST', payload);
+        setStatus('员工创建成功');
+      }
       await renderEmployees();
     } catch (err) {
       setStatus(err.message, true);
     }
   };
-}
-
-function renderTasksKanban(tasks) {
-  const columns = {
-    todo: [],
-    in_progress: [],
-    done: [],
-  };
-  tasks.forEach((t) => {
-    if (columns[t.status]) {
-      columns[t.status].push(t);
-    }
-  });
-  return `<div class="kanban">${Object.entries(columns)
-    .map(
-      ([k, list]) => `<div class="kanban-col"><h4>${k}</h4>${list
-        .map(
-          (task) => `<div class="item"><strong>${task.description}</strong><div class="small">优先级：${task.priority} | 截止：${task.due_date || '无'}</div></div>`,
-        )
-        .join('')}</div>`,
-    )
-    .join('')}</div>`;
 }
 
 async function renderProjects() {
@@ -362,12 +395,18 @@ async function renderProjects() {
     return;
   }
 
+  let employees = [];
   try {
-    state.projects = await api(`/projects?company_id=${state.companyId}`);
+    [state.projects, employees] = await Promise.all([
+      api(`/projects?company_id=${state.companyId}`),
+      api(`/employees?company_id=${state.companyId}`),
+    ]);
   } catch (err) {
     setStatus(err.message, true);
     return;
   }
+
+  const employeeOptions = employees.map((e) => `<option value="${e.id}">${e.name}</option>`).join('');
 
   el.appendChild(
     card(`
@@ -377,7 +416,7 @@ async function renderProjects() {
           <h4>创建项目</h4>
           <label>项目名称</label><input name="name" required />
           <label>项目目标</label><textarea name="objective"></textarea>
-          <label>负责人 employee_id</label><input name="lead_id" type="number" />
+          <label>负责人</label><select name="lead_id"><option value="">未分配</option>${employeeOptions}</select>
           <label>开始日期</label><input name="start_date" type="datetime-local" />
           <label>结束日期</label><input name="end_date" type="datetime-local" />
           <label>描述</label><textarea name="description"></textarea>
@@ -389,12 +428,10 @@ async function renderProjects() {
           <label>项目</label>
           <select name="project_id" required>${state.projects.map((p) => `<option value="${p.id}">${p.name}</option>`).join('')}</select>
           <label>任务描述</label><textarea name="description" required></textarea>
-          <label>责任人 assignee_id</label><input name="assignee_id" type="number" />
+          <label>责任人</label><select name="assignee_id"><option value="">未分配</option>${employeeOptions}</select>
           <label>截止日期</label><input name="due_date" type="datetime-local" />
-          <label>优先级</label>
-          <select name="priority"><option>low</option><option selected>medium</option><option>high</option></select>
-          <label>状态</label>
-          <select name="status"><option selected>todo</option><option>in_progress</option><option>done</option></select>
+          <label>优先级</label><select name="priority"><option>low</option><option selected>medium</option><option>high</option></select>
+          <label>状态</label><select name="status"><option selected>todo</option><option>in_progress</option><option>done</option></select>
           <button class="primary-btn" type="submit">创建任务</button>
         </form>
       </div>
@@ -412,11 +449,11 @@ async function renderProjects() {
       tasks = [];
     }
     const listView = tasks
-      .map((task) => `<div class="item">${task.description} <span class="tag">${task.status}</span> <div class="small">依赖任务: ${task.dependency_task_id || '无'}</div></div>`)
+      .map((task) => `<div class="item">${task.description} <span class="tag">${task.status}</span></div>`)
       .join('');
 
     listEl.appendChild(
-      card(`<h4>${project.name}</h4><div class="small">目标：${project.objective || '未填写'} | 负责人：${project.lead_id || '未分配'}</div>
+      card(`<h4>${project.name}</h4><div class="small">目标：${project.objective || '未填写'} | 负责人：${employees.find((e) => e.id === project.lead_id)?.name || '未分配'}</div>
       <p class="small">列表视图</p>${listView || '<div class="small">暂无任务</div>'}
       <p class="small">看板视图</p>${renderTasksKanban(tasks)}`),
     );
@@ -887,21 +924,34 @@ async function renderAdmin() {
   el.appendChild(card('<h3>平台管理员：租户审核 / 全局统计 / 权限巡检</h3><div id="adminContent" class="small">加载中...</div>'));
 
   try {
-    const [tenants, users, audits] = await Promise.all([api('/admin/tenants'), api('/admin/users'), api('/admin/audits')]);
+    const [tenants, users, audits, aiSettings] = await Promise.all([api('/admin/tenants'), api('/admin/users'), api('/admin/audits'), api('/admin/settings/ai-model')]);
     document.getElementById('adminContent').innerHTML = `
       <div class="grid">
-        <div class="item"><h4>租户列表 (${tenants.length})</h4>${tenants
-          .map((t) => `<div>${t.id}. ${t.name}</div>`)
-          .join('')}</div>
-        <div class="item"><h4>用户列表 (${users.length})</h4>${users
-          .map((u) => `<div>${u.email} - ${u.platform_role}</div>`)
-          .join('')}</div>
-        <div class="item"><h4>审计日志 (最近 ${audits.length})</h4>${audits
-          .slice(0, 10)
-          .map((a) => `<div>${a.created_at}: ${a.action}</div>`)
-          .join('')}</div>
+        <div class="item"><h4>租户列表 (${tenants.length})</h4>${tenants.map((t) => `<div>${t.id}. ${t.name}</div>`).join('')}</div>
+        <div class="item"><h4>用户列表 (${users.length})</h4>${users.map((u) => `<div>${u.email} - ${u.platform_role}</div>`).join('')}</div>
+        <div class="item"><h4>审计日志 (最近 ${audits.length})</h4>${audits.slice(0, 10).map((a) => `<div>${a.created_at}: ${a.action}</div>`).join('')}</div>
       </div>
+      <form id="aiModelSettingForm" class="item">
+        <h4>系统设置：全局 AI 模型 API</h4>
+        <label>Provider</label><input name="provider" value="${aiSettings.provider || ''}" required />
+        <label>Base URL</label><input name="base_url" value="${aiSettings.base_url || ''}" required />
+        <label>Model</label><input name="model" value="${aiSettings.model || ''}" required />
+        <label>API Key</label><input name="api_key" type="password" placeholder="${aiSettings.api_key ? '已配置，留空不修改' : '请输入Key'}" />
+        <button class="primary-btn" type="submit">保存系统AI配置</button>
+      </form>
     `;
+
+    document.getElementById('aiModelSettingForm').onsubmit = async (e) => {
+      e.preventDefault();
+      const payload = Object.fromEntries(new FormData(e.target).entries());
+      try {
+        await api('/admin/settings/ai-model', 'PUT', payload);
+        setStatus('系统AI模型配置已保存');
+        await renderAdmin();
+      } catch (err) {
+        setStatus(err.message, true);
+      }
+    };
   } catch (err) {
     document.getElementById('adminContent').textContent = `无权限或加载失败：${err.message}`;
   }

@@ -5,7 +5,7 @@ from flask_login import current_user, login_required
 
 from ..api_utils import api_error, api_ok, ensure_company_scope, log_action, parse_iso_datetime
 from ..extensions import db
-from ..models import Priority, Project, ProjectEmployee, Task, TaskStatus
+from ..models import Employee, Priority, Project, ProjectEmployee, Task, TaskStatus
 from . import bp
 
 
@@ -19,11 +19,17 @@ def create_project():
     if not ensure_company_scope(company_id):
         return api_error('forbidden', status=403)
 
+    lead_id = data.get('lead_id')
+    if lead_id:
+        lead = Employee.query.filter_by(id=lead_id, company_id=company_id).first()
+        if not lead:
+            return api_error('lead_employee_not_found')
+
     project = Project(
         company_id=company_id,
         name=data['name'],
         description=data.get('description'),
-        lead_id=data.get('lead_id'),
+        lead_id=lead_id,
         start_date=parse_iso_datetime(data.get('start_date')),
         end_date=parse_iso_datetime(data.get('end_date')),
         objective=data.get('objective'),
@@ -68,9 +74,15 @@ def create_task(project_id: int):
     if 'description' not in data:
         return api_error('invalid_payload')
 
+    assignee_id = data.get('assignee_id')
+    if assignee_id:
+        assignee = Employee.query.filter_by(id=assignee_id, company_id=project.company_id).first()
+        if not assignee:
+            return api_error('assignee_not_found')
+
     task = Task(
         project_id=project_id,
-        assignee_id=data.get('assignee_id'),
+        assignee_id=assignee_id,
         description=data['description'],
         status=TaskStatus(data.get('status', TaskStatus.TODO.value)),
         due_date=parse_iso_datetime(data.get('due_date')),
@@ -115,13 +127,17 @@ def assign_project_member(project_id: int):
     if 'employee_id' not in data:
         return api_error('invalid_payload')
 
-    member = ProjectEmployee(
+    member = Employee.query.filter_by(id=data['employee_id'], company_id=project.company_id).first()
+    if not member:
+        return api_error('employee_not_found')
+
+    project_member = ProjectEmployee(
         project_id=project_id,
         employee_id=data['employee_id'],
         role_in_project=data.get('role_in_project'),
         created_by=current_user.id,
     )
-    db.session.merge(member)
+    db.session.merge(project_member)
     log_action('project.member.assign', 'project_employee', None, project.company_id, {'project_id': project_id})
     db.session.commit()
     return api_ok({'project_id': project_id, 'employee_id': data['employee_id']}, status=201)
